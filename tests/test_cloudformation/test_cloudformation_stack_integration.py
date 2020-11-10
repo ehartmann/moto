@@ -39,6 +39,7 @@ from moto import (
     mock_redshift_deprecated,
     mock_route53_deprecated,
     mock_s3,
+    mock_secretsmanager,
     mock_sns_deprecated,
     mock_sqs_deprecated,
     mock_elbv2,
@@ -81,6 +82,33 @@ def test_stack_sqs_integration():
     queue.resource_type.should.equal("AWS::SQS::Queue")
     queue.logical_resource_id.should.equal("QueueGroup")
     queue.physical_resource_id.should.equal("my-queue")
+
+
+@mock_cloudformation_deprecated()
+def test_stack_secretmanager_integration():
+    sm_template = {
+        "AWSTemplateFormatVersion": "2010-09-09",
+        "Resources": {
+            "mySecret": {
+                "Type": "AWS::SecretsManager::Secret",
+                "Properties": {
+                    "Name": "myTest",
+                    "SecretString": "mySecret",
+                },
+            }
+        },
+    }
+
+    sm_template_json = json.dumps(sm_template)
+
+    conn = boto.cloudformation.connect_to_region("us-west-1")
+    conn.create_stack("test_stack", template_body=sm_template_json)
+
+    stack = conn.describe_stacks()[0]
+    secret = stack.describe_resources()[0]
+    secret.resource_type.should.equal("AWS::SecretsManager::Secret")
+    secret.logical_resource_id.should.equal("mySecret")
+    secret.physical_resource_id.should.equal("myTest")
 
 
 @mock_cloudformation_deprecated()

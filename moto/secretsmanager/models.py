@@ -8,7 +8,7 @@ import datetime
 
 from boto3 import Session
 
-from moto.core import BaseBackend, BaseModel
+from moto.core import BaseBackend, BaseModel, CloudFormationModel, ACCOUNT_ID
 from .exceptions import (
     SecretNotFoundException,
     SecretHasNoValueException,
@@ -20,7 +20,8 @@ from .exceptions import (
 )
 from .utils import random_password, secret_arn, get_secret_name_from_arn
 from .list_secrets.filters import all, tag_key, tag_value, description, name
-
+from ..core.utils import iso_8601_datetime_with_milliseconds
+from ..ec2.utils import random_instance_id
 
 _filter_functions = {
     "all": all,
@@ -51,7 +52,7 @@ class SecretsManager(BaseModel):
         self.region = region_name
 
 
-class FakeSecret:
+class FakeSecret(CloudFormationModel):
     def __init__(
         self,
         region_name,
@@ -76,6 +77,46 @@ class FakeSecret:
         self.rotation_lambda_arn = ""
         self.auto_rotate_after_days = 0
         self.deleted_date = None
+
+    @property
+    def physical_resource_id(self):
+        return self.name
+
+    def get_tags(self):
+        return [self.tags[tag] for tag in self.tags]
+
+    @classmethod
+    def create_from_cloudformation_json(
+            cls, resource_physical_name, cloudformation_json, region_name
+    ):
+        properties = cloudformation_json["Properties"]
+        description = properties.get("Description", None)
+        generate_secret_string = properties.get("GenerateSecretString", None) # FIXME
+        kms_key_id = properties.get("KmsKeyId", None) # FIXME
+        name = properties.get("Name", None)
+        secret_string = properties.get("SecretString", None)
+        tags = properties.get("Tags", [])
+        return secretsmanager_backends[region_name]._add_secret(name, secret_string=secret_string, description=description, tags=tags)
+
+    @property
+    def created_iso_8601(self):
+        return iso_8601_datetime_with_milliseconds(self.create_date)
+
+    @staticmethod
+    def cloudformation_name_type():
+        return "Secret"
+
+    @staticmethod
+    def cloudformation_type():
+        # https://docs.aws.amazon.com/AWSCloudFormation/latest/UserGuide/aws-resource-secretsmanager-secret.html
+        return "AWS::SecretsManager::Secret"
+
+    def get_cfn_attribute(self, attribute_name):
+        from moto.cloudformation.exceptions import UnformattedGetAttTemplateException
+
+        if attribute_name == "Arn":
+            return self.arn
+        raise UnformattedGetAttTemplateException()
 
     def update(self, description=None, tags=[]):
         self.description = description
