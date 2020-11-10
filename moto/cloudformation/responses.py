@@ -393,6 +393,7 @@ class CloudFormationResponse(BaseResponse):
     def validate_template(self):
         template_body = self._get_param("TemplateBody")
         template_url = self._get_param("TemplateURL")
+        yaml.add_multi_constructor("", yaml_tag_constructor)
         if template_url:
             template_body = self._get_stack_from_s3_url(template_url)
 
