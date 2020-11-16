@@ -453,6 +453,13 @@ class LogGroup:
 
         self.subscription_filters = []
 
+    @property
+    def physical_resource_id(self):
+        return self.name
+
+    def delete(self, region):
+        logs_backends[region].delete_log_group(self.name)
+
 
 class LogsBackend(BaseBackend):
     def __init__(self, region_name):
